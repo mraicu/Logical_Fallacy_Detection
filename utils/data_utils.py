@@ -1,8 +1,8 @@
 import wandb
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime
 import os
+
 
 def read_data(train_file_name, test_file_name=None, dev_file_name=None):
     if (test_file_name != None and dev_file_name != None):
@@ -19,12 +19,16 @@ def read_data(train_file_name, test_file_name=None, dev_file_name=None):
     else:
         dataset = pd.read_csv(train_file_name)
         size = dataset.shape[0]
-        size_train = int(0.8 * size)
-        size_test = int(0.2 * size)
+        size_train = int(0.75 * size)
+        size_test = int(0.15 * size)
 
         train_dataset = dataset.loc[:size_train - 1, :]
         test_dataset = dataset.loc[size_train:size_train + size_test - 1, :]
         dev_dataset = dataset.loc[size_train + size_test::]
+
+        train_dataset = train_dataset[['logical_fallacies', 'source_article_ro']]
+        test_dataset = test_dataset[['logical_fallacies', 'source_article_ro']]
+        dev_dataset = dev_dataset[['logical_fallacies', 'source_article_ro']]
 
         return train_dataset, test_dataset, dev_dataset
 
@@ -36,13 +40,69 @@ def filter_fallacies(train_data, test_data, dev_data, logical_fallacies):
     return filtered_train_data, filtered_test_data, filtered_dev_data
 
 
-def plot_training_curve(trainer):
+def plot_learning_curve(trainer, file_name="img.png"):
     """
-    Plots the training loss and accuracy over epochs for a Trainer instance and logs it to WandB.
+    Plots the training and validation loss over epochs for a Trainer instance.
 
     Args:
         trainer (transformers.Trainer): The Trainer instance after model training.
     """
+    os.makedirs("images", exist_ok=True)
+
+    # Extract metrics from the trainer's log history
+    metrics = trainer.state.log_history
+
+    eval_loss = []
+    train_loss = []
+    epochs_train = []
+    epochs_eval = []
+
+    # Extract training and evaluation losses along with epoch numbers
+    for log in metrics:
+        if 'eval_loss' in log:
+            eval_loss.append(log['eval_loss'])
+            epochs_eval.append(log['epoch'])  # Store corresponding epoch for eval loss
+        if 'loss' in log:
+            train_loss.append(log['loss'])
+            epochs_train.append(log['epoch'])  # Store corresponding epoch for train loss
+
+    # Ensure both lists have the same number of elements for plotting
+    if len(epochs_train) != len(train_loss):
+        print("Warning: Training loss and epoch count mismatch!")
+    if len(epochs_eval) != len(eval_loss):
+        print("Warning: Validation loss and epoch count mismatch!")
+
+    # Plot the losses
+    plt.figure(figsize=(10, 5))
+    plt.plot(epochs_train, train_loss, label='Training Loss', marker='o', linestyle='-')
+    plt.plot(epochs_eval, eval_loss, label='Validation Loss', marker='x', linestyle='-')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training Loss & Validation Loss')
+    plt.legend()
+    plt.grid(True)
+
+    plt.savefig("images/" + file_name)
+
+    # Log the plot to WandB (
+    plot = plt.gcf()  # Get the current figure
+    wandb.log({"Train vs Validation plot": wandb.Image(plot)})  # Uncomment to log to WandB
+
+    plt.show()
+    plt.close()  # Close the plot to free up memory
+    return plot
+
+
+def plot_training_curve(trainer, file_name="img.png"):
+    """
+    Plots the training and validation loss over epochs for a Trainer instance and logs it to WandB.
+
+    Args:
+        trainer (transformers.Trainer): The Trainer instance after model training.
+    """
+    # Ensure the save directory exists (create if it doesn't)
+    os.makedirs("images", exist_ok=True)
+
     # Extract metrics from the trainer's log history
     metrics = trainer.state.log_history
 
@@ -77,12 +137,14 @@ def plot_training_curve(trainer):
     plt.title('Training Loss & Accuracy')
     plt.legend()
     plt.grid(True)
-    plt.show()
 
+    plt.savefig("images/" + file_name, bbox_inches='tight')
     # Log the plot to WandB
     plot = plt.gcf()  # Get the current figure
     wandb.log({"Train plot": wandb.Image(plot)})  # Log the plot as an image to WandB
-    plt.close()  # Close the plot to free up memory
+
+    plt.show()
+    plt.close()
     return plot
 
 
@@ -107,8 +169,7 @@ def encode_labels(train_data, test_data, dev_data, label2id):
     return train_data, test_data, dev_data
 
 
-def get_file_name(output_dir, model_name):
-    current_time = datetime.now()
+def get_file_name(output_dir, model_name, current_time):
     formatted_time = current_time.strftime("%d-%m-%Y_%H-%M-%S")
     trained_model_file = os.path.join(output_dir, formatted_time + "_" + str(model_name) + ".pickle")
     return trained_model_file

@@ -1,7 +1,10 @@
 import torch
 import wandb
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score, confusion_matrix
 
 
 class DataLoader(Dataset):
@@ -98,7 +101,7 @@ def compute_metrics(pred):
 def compute_metrics_wandb(pred):
     """
     Computes accuracy, F1, precision, and recall for a given set of predictions,
-    including per-class metrics.
+    including per-class metrics and confusion matrix visualization.
 
     Args:
         pred (obj): An object containing label_ids and predictions attributes.
@@ -109,12 +112,11 @@ def compute_metrics_wandb(pred):
 
     Returns:
         dict: A dictionary containing the following metrics:
-            - Accuracy (float): The proportion of correctly classified instances.
-            - F1 (float): The macro F1 score, which is the harmonic mean of precision
-              and recall.
-            - Precision (float): The macro precision.
-            - Recall (float): The macro recall.
-            - Per-class metrics: Precision, Recall, F1, and Accuracy for each class.
+            - Accuracy (float)
+            - F1 score (macro)
+            - Precision (macro)
+            - Recall (macro)
+            - Per-class metrics
     """
     labels = pred.label_ids
     preds = pred.predictions.argmax(-1)
@@ -125,7 +127,10 @@ def compute_metrics_wandb(pred):
 
     # Calculate per-class precision, recall, and F1 score
     class_precision, class_recall, class_f1, _ = precision_recall_fscore_support(labels, preds, average=None)
-    class_acc = [(labels == preds)[labels == i].mean() for i in range(len(class_precision))]
+    class_acc = [
+    np.mean(labels[preds == i] == i) if np.any(labels == i) else 0.0
+    for i in range(len(class_precision))]
+
 
     # Log metrics per class to WandB
     class_metrics = {
@@ -142,6 +147,21 @@ def compute_metrics_wandb(pred):
     })
 
     wandb.log(class_metrics)  # Log class-wise metrics to WandB
+
+    # Compute confusion matrix
+    cm = confusion_matrix(labels, preds)
+
+    # Plot confusion matrix as heatmap
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=np.unique(labels), yticklabels=np.unique(labels))
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.title("Confusion Matrix")
+
+    # Log confusion matrix image to WandB
+    cm_fig = wandb.Image(plt)
+    wandb.log({"Confusion Matrix": cm_fig})
+    plt.close()
 
     # Return the overall metrics dictionary
     return {
