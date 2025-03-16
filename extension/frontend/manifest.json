@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Logical Fallacy Detection",
+  "author": "R. Maria",
+  "version": "1.0",
+  "description": "Classify text in online articles.",
+  "permissions": ["scripting", "activeTab", "storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_icon": {
+      "16": "icon.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "utils.js",
+        "highlight.js",
+        "analyze_button.js",
+        "content_scripts.js"
+      ],
+      "css": ["content_styles.css"],
+      "run_at": "document_end"
+    }
+  ]
+}
