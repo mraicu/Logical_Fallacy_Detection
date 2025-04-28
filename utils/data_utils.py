@@ -4,16 +4,21 @@ import matplotlib.pyplot as plt
 import os
 
 
-def read_data(train_file_name, test_file_name=None, dev_file_name=None):
+def read_data(train_file_name, test_file_name=None, dev_file_name=None, sentiment=False):
     if (test_file_name != None and dev_file_name != None):
 
         train_df = pd.read_csv(train_file_name)
         test_df = pd.read_csv(test_file_name)
         dev_df = pd.read_csv(dev_file_name)
 
-        train_dataset = train_df[['logical_fallacies', 'source_article_ro']]
-        test_dataset = test_df[['logical_fallacies', 'source_article_ro']]
-        dev_dataset = dev_df[['logical_fallacies', 'source_article_ro']]
+        if sentiment:
+            train_dataset = train_df[['logical_fallacies', 'source_article_ro', 'sentiment']]
+            test_dataset = test_df[['logical_fallacies', 'source_article_ro', 'sentiment']]
+            dev_dataset = dev_df[['logical_fallacies', 'source_article_ro', 'sentiment']]
+        else:
+            train_dataset = train_df[['logical_fallacies', 'source_article_ro']]
+            test_dataset = test_df[['logical_fallacies', 'source_article_ro']]
+            dev_dataset = dev_df[['logical_fallacies', 'source_article_ro']]
 
         return train_dataset, test_dataset, dev_dataset
     else:
@@ -26,9 +31,16 @@ def read_data(train_file_name, test_file_name=None, dev_file_name=None):
         test_dataset = dataset.loc[size_train:size_train + size_test - 1, :]
         dev_dataset = dataset.loc[size_train + size_test::]
 
-        train_dataset = train_dataset[['logical_fallacies', 'source_article_ro']]
-        test_dataset = test_dataset[['logical_fallacies', 'source_article_ro']]
-        dev_dataset = dev_dataset[['logical_fallacies', 'source_article_ro']]
+        if sentiment:
+            train_dataset = train_dataset[['logical_fallacies', 'source_article_ro', 'sentiment']]
+            test_dataset = test_dataset[['logical_fallacies', 'source_article_ro', 'sentiment']]
+            dev_dataset = dev_dataset[['logical_fallacies', 'source_article_ro', 'sentiment']]
+        else:
+            train_dataset = train_dataset[['logical_fallacies', 'source_article_ro']]
+            test_dataset = test_dataset[['logical_fallacies', 'source_article_ro']]
+            dev_dataset = dev_dataset[['logical_fallacies', 'source_article_ro']]
+
+
 
         return train_dataset, test_dataset, dev_dataset
 
