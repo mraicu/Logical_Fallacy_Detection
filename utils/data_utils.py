@@ -40,8 +40,6 @@ def read_data(train_file_name, test_file_name=None, dev_file_name=None, sentimen
             test_dataset = test_dataset[['logical_fallacies', 'source_article_ro']]
             dev_dataset = dev_dataset[['logical_fallacies', 'source_article_ro']]
 
-
-
         return train_dataset, test_dataset, dev_dataset
 
 
@@ -177,6 +175,28 @@ def encode_labels(train_data, test_data, dev_data, label2id):
     print("train_data shape:", train_data.shape)
     print("test_data shape:", test_data.shape)
     print("dev_data shape:", dev_data.shape)
+
+    return train_data, test_data, dev_data
+
+
+sentiment_mapping = {"negative": 0, "neutral": 1, "positive": 2}
+
+
+def encode_labels_sentiment(train_data, test_data, dev_data, label2id):
+    # Copy data to avoid modification warnings
+    train_data = train_data.copy()
+    test_data = test_data.copy()
+    dev_data = dev_data.copy()
+
+    # Encode logical fallacies as IDs
+    train_data['logical_fallacies_id'] = train_data['logical_fallacies'].apply(lambda x: label2id[x.strip()])
+    test_data['logical_fallacies_id'] = test_data['logical_fallacies'].apply(lambda x: label2id[x.strip()])
+    dev_data['logical_fallacies_id'] = dev_data['logical_fallacies'].apply(lambda x: label2id[x.strip()])
+
+    # Encode sentiment as IDs
+    train_data['sentiment_id'] = train_data['sentiment'].map(sentiment_mapping)
+    test_data['sentiment_id'] = test_data['sentiment'].map(sentiment_mapping)
+    dev_data['sentiment_id'] = dev_data['sentiment'].map(sentiment_mapping)
 
     return train_data, test_data, dev_data
 

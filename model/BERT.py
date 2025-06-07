@@ -1,49 +1,53 @@
 import torch
 import wandb
 import numpy as np
+import torch.nn as nn
 import seaborn as sns
 import matplotlib.pyplot as plt
+from transformers import BertModel
 from torch.utils.data import Dataset
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score, confusion_matrix
 
 
 class DataLoader(Dataset):
     """
-    Custom Dataset class for handling tokenized text data and corresponding labels.
+    Custom Dataset class for handling tokenized text data and optional labels and sentiments.
     Inherits from torch.utils.data.Dataset.
     """
 
-    def __init__(self, encodings, labels):
+    def __init__(self, encodings, labels=None, sentiments=None):
         """
-        Initializes the DataLoader class with encodings and labels.
+        Initializes the DataLoader class with encodings, and optionally labels and sentiments.
 
         Args:
             encodings (dict): A dictionary containing tokenized input text data
                               (e.g., 'input_ids', 'token_type_ids', 'attention_mask').
-            labels (list): A list of integer labels for the input text data.
+            labels (list, optional): A list of integer labels for the input text data.
+            sentiments (list, optional): A list of sentiments corresponding to the input data.
         """
         self.encodings = encodings
         self.labels = labels
+        self.sentiments = sentiments
 
     def __getitem__(self, idx):
         """
-        Returns a dictionary containing tokenized data and the corresponding label for a given index.
+        Returns a dictionary containing tokenized data and optional label and sentiment for a given index.
 
         Args:
             idx (int): The index of the data item to retrieve.
 
         Returns:
-            item (dict): A dictionary containing the tokenized data and the corresponding label.
+            item (dict): A dictionary containing the tokenized data and the corresponding label/sentiment.
         """
-        # Retrieve tokenized data for the given index
         item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        # Add the label for the given index to the item dictionary
-        item['labels'] = torch.tensor(self.labels[idx])
-        return item
 
-        # item = {key: torch.tensor(val[idx]).contiguous() for key, val in self.encodings.items()}
-        # item['labels'] = torch.tensor(self.labels[idx]).contiguous()
-        # return item
+        if self.labels is not None:
+            item['labels'] = torch.tensor(self.labels[idx], dtype=torch.long)
+
+        if self.sentiments is not None:
+            item['sentiment'] = torch.tensor(self.sentiments[idx])
+
+        return item
 
     def __len__(self):
         """
@@ -52,7 +56,69 @@ class DataLoader(Dataset):
         Returns:
             (int): The number of data items in the dataset.
         """
-        return len(self.labels)
+        return len(next(iter(self.encodings.values())))
+
+
+class BertWithSentiment(nn.Module):
+    """
+    A PyTorch neural network model that combines BERT representations with sentiment embeddings
+    for enhanced text classification.
+
+    This model integrates contextual embeddings from a pre-trained BERT model with additional
+    sentiment information, represented as an embedding vector, to improve performance on tasks
+    where sentiment is an important feature (e.g., argument classification, fallacy detection).
+
+    Attributes:
+        bert (BertModel): Pre-trained BERT model from Hugging Face Transformers.
+        sentiment_embedding (nn.Embedding): Embedding layer to represent sentiment categories.
+        dropout (nn.Dropout): Dropout layer for regularization.
+        classifier (nn.Linear): Linear layer for classification using the combined representation.
+    """
+
+    def __init__(self, model_name, num_labels, num_sentiment_classes=3):
+        """
+        Initializes the BertWithSentiment model.
+
+        Args:
+            model_name (str): Name or path of the pre-trained BERT model.
+            num_labels (int): Number of target classes for classification.
+            num_sentiment_classes (int, optional): Number of distinct sentiment classes.
+                Defaults to 3 (e.g., negative, neutral, positive).
+        """
+        super(BertWithSentiment, self).__init__()
+        self.bert = BertModel.from_pretrained(model_name, return_dict=True)  # Ensure return_dict=True
+        self.sentiment_embedding = nn.Embedding(num_sentiment_classes, 768)
+        self.dropout = nn.Dropout(0.3)
+        self.classifier = nn.Linear(768 * 2, num_labels)
+
+    def forward(self, input_ids, attention_mask, sentiment, labels=None):
+        """
+        Forward pass of the model.
+
+        Args:
+            input_ids (torch.Tensor): Tensor of input token IDs (batch_size, sequence_length).
+            attention_mask (torch.Tensor): Attention mask tensor (batch_size, sequence_length).
+            sentiment (torch.Tensor): Tensor of sentiment class indices (batch_size,).
+            labels (torch.Tensor, optional): True class labels (batch_size,). Used for loss computation.
+
+        Returns:
+            dict: A dictionary containing:
+                - "logits" (torch.Tensor): Raw, unnormalized scores for each class (batch_size, num_labels).
+                - "loss" (torch.Tensor, optional): Cross-entropy loss if labels are provided.
+        """
+        bert_output = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        cls_token_embedding = bert_output.last_hidden_state[:, 0, :]
+        sentiment_embed = self.sentiment_embedding(sentiment)
+        combined = torch.cat((cls_token_embedding, sentiment_embed), dim=1)
+
+        logits = self.classifier(self.dropout(combined))
+
+        loss = None
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(logits, labels)  # Ensure labels are (batch_size,) with class indices
+
+        return {"loss": loss, "logits": logits} if loss is not None else {"logits": logits}
 
 
 def compute_metrics(pred):
@@ -128,9 +194,8 @@ def compute_metrics_wandb(pred):
     # Calculate per-class precision, recall, and F1 score
     class_precision, class_recall, class_f1, _ = precision_recall_fscore_support(labels, preds, average=None)
     class_acc = [
-    np.mean(labels[preds == i] == i) if np.any(labels == i) else 0.0
-    for i in range(len(class_precision))]
-
+        np.mean(labels[preds == i] == i) if np.any(labels == i) else 0.0
+        for i in range(len(class_precision))]
 
     # Log metrics per class to WandB
     class_metrics = {
@@ -172,39 +237,46 @@ def compute_metrics_wandb(pred):
     }
 
 
-def predict(text, tokenizer, model):
+sentiment_mapping = {"negative": 0, "neutral": 1, "positive": 2}
+
+
+def predict(text, tokenizer, model, sentiment=None):
     """
-    Predicts the class label for a given input text
+    Predicts the class label for a given input text, optionally using sentiment.
 
     Args:
         text (str): The input text for which the class label needs to be predicted.
+        tokenizer: The tokenizer to convert text to model inputs.
+        model: The trained model for prediction.
+        sentiment (str, optional): The sentiment label (e.g., "positive", "neutral", "negative").
+        sentiment_mapping (dict, optional): Mapping from sentiment string to integer ID.
 
     Returns:
         probs (torch.Tensor): Class probabilities for the input text.
         pred_label_idx (torch.Tensor): The index of the predicted class label.
         pred_label (str): The predicted class label.
     """
-    # Tokenize the input text and move tensors to the GPU if available
-    inputs = tokenizer(text, padding=True, truncation=True, max_length=512, return_tensors="pt").to("cuda")
+    # Tokenize input and move to GPU
+    inputs = tokenizer(
+        text, padding=True, truncation=True, max_length=512, return_tensors="pt"
+    ).to("cuda")
 
-    # Get model output (logits)
-    outputs = model(**inputs)
+    # Add sentiment if provided
+    if sentiment is not None:
+        sentiment_tensor = torch.tensor([sentiment_mapping[sentiment]]).to("cuda")
+        outputs = model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            sentiment=sentiment_tensor,
+        )
+    else:
+        outputs = model(**inputs)
 
-    probs = outputs[0].softmax(1)
-    """ Explanation outputs: The BERT model returns a tuple containing the output logits (and possibly other elements depending on the model configuration). In this case, the output logits are the first element in the tuple, which is why we access it using outputs[0].
+    # Convert logits to probabilities
+    probs = outputs[0].softmax(1) if isinstance(outputs, tuple) else outputs.softmax(1)
 
-    outputs[0]: This is a tensor containing the raw output logits for each class. The shape of the tensor is (batch_size, num_classes) where batch_size is the number of input samples (in this case, 1, as we are predicting for a single input text) and num_classes is the number of target classes.
-
-    softmax(1): The softmax function is applied along dimension 1 (the class dimension) to convert the raw logits into class probabilities. Softmax normalizes the logits so that they sum to 1, making them interpretable as probabilities. """
-
-    # Get the index of the class with the highest probability
-    # argmax() finds the index of the maximum value in the tensor along a specified dimension.
-    # By default, if no dimension is specified, it returns the index of the maximum value in the flattened tensor.
+    # Get predicted class index
     pred_label_idx = probs.argmax()
-
-    # Now map the predicted class index to the actual class label
-    # Since pred_label_idx is a tensor containing a single value (the predicted class index),
-    # the .item() method is used to extract the value as a scalar
     pred_label = model.config.id2label[pred_label_idx.item()]
 
     return probs, pred_label_idx, pred_label
