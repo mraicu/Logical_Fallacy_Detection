@@ -23,7 +23,7 @@ function createAnalyzeButton() {
     classifierBtn.classList.add("mr-classifier-btn");
 
     classifierBtn.addEventListener("mouseenter", () => {
-        classifierBtnWrapper.style.width = "90px";
+        classifierBtnWrapper.style.width = "182px";
     });
     classifierBtnWrapper.addEventListener("mouseleave", () => {
         classifierBtnWrapper.style.width = "27px";
@@ -46,11 +46,32 @@ function createAnalyzeButton() {
     classifierSelect.addEventListener("change", onClassifierChange);
 
     chrome.storage.local.get("classification", (data) => {
-        if (data.classification) {
+        if (data) {
             classifierSelect.value = data.classification;
             classifierBtn.innerText = getClassifierValueSymbol(data.classification);
         }
     });
+
+    // Classifier sentiment checkbox
+    const classifierSentimentDiv = document.createElement('div');
+    classifierSentimentDiv.classList.add("mr-classifier-sentiment");
+
+    const classifierSentimentCheckbox = document.createElement("input");
+    classifierSentimentCheckbox.type = 'checkbox';
+    classifierSentimentCheckbox.id = 'sentiment-checkbox';
+
+    classifierSentimentCheckbox.addEventListener("change", onClassifierCheckboxChange);
+
+    chrome.storage.local.get("sentiment", (data) => {
+        if (data) {
+            classifierSentimentCheckbox.checked = data.sentiment;
+        }
+    });
+
+    // Classifier sentiment label
+    const classifierSentimentLabel = document.createElement('label');
+    classifierSentimentLabel.innerText = 'Sentiment';
+    classifierSentimentLabel.htmlFor = 'sentiment-checkbox';
 
     // Analyze button
     const analyzeBtn = document.createElement("button");
@@ -76,8 +97,12 @@ function createAnalyzeButton() {
     );
 
     // Append elements to their parents
+    classifierSentimentDiv.appendChild(classifierSentimentCheckbox);
+    classifierSentimentDiv.appendChild(classifierSentimentLabel);
+
     classifierBtnWrapper.appendChild(classifierBtn);
     classifierBtnWrapper.appendChild(classifierSelect);
+    classifierBtnWrapper.appendChild(classifierSentimentDiv);
 
     analyzeBtn.appendChild(analyzeBtnSpan);
     analyzeBtn.appendChild(analyzeBtnIcon);
@@ -105,6 +130,18 @@ function onClassifierChange(event) {
 }
 
 /**
+ * When the Classifier checkbox changes
+ */
+function onClassifierCheckboxChange(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const isChecked = event.target.checked;
+
+    // Save option in chrome storage
+    chrome.storage.local.set({sentiment: isChecked});
+}
+
+/**
  * When the Analyze button is clicked
  */
 async function onAnalyzeButtonClick() {
@@ -123,39 +160,47 @@ async function onAnalyzeButtonClick() {
     analyzeBtnIcon.classList.add("mr-loading-spinner");
     analyzeBtnIcon.style.opacity = 0.65;
 
-    chrome.storage.local.get("classification", (data) => {
-        if (!data || !data.classification) return;
+    chrome.storage.local.get("classification", (classificationData) => {
+        if (!classificationData || !classificationData.classification) return;
 
-        chrome.runtime.sendMessage(
-            {
-                type: "ANALYZE_SELECTION_REQUEST",
-                payload: {selectedText, classification: data.classification},
-            },
-            (response) => {
-                if (!response || !response.payload) return;
+        chrome.storage.local.get("sentiment", (sentimentData) => {
+            if (!sentimentData) return;
 
-                // Reset analyze button after response
-                analyzeBtn.disabled = false;
-                analyzeBtnSpan.innerText = "Analyze";
-                analyzeBtnSpan.style.opacity = 1;
-                analyzeBtnIcon.innerHTML = SVG_ARROW_RIGHT_ICON;
-                analyzeBtnIcon.classList.remove("mr-loading-spinner");
-                analyzeBtnIcon.style.opacity = 1;
+            chrome.runtime.sendMessage(
+                {
+                    type: "ANALYZE_SELECTION_REQUEST",
+                    payload: {
+                        selectedText,
+                        classification: classificationData.classification,
+                        sentiment: sentimentData.sentiment
+                    },
+                },
+                (response) => {
+                    if (!response || !response.payload) return;
 
-                // Highlight sentences
-                const {predictions} = response.payload;
-                Object.entries(predictions).forEach(([sentence, [label, props]]) => {
-                    highlightText(sentence, label, props);
-                });
+                    // Reset analyze button after response
+                    analyzeBtn.disabled = false;
+                    analyzeBtnSpan.innerText = "Analyze";
+                    analyzeBtnSpan.style.opacity = 1;
+                    analyzeBtnIcon.innerHTML = SVG_ARROW_RIGHT_ICON;
+                    analyzeBtnIcon.classList.remove("mr-loading-spinner");
+                    analyzeBtnIcon.style.opacity = 1;
 
-                // Hide button and clear selection
-                analyzeBtn.style.opacity = "0";
-                if (selection.removeAllRanges) {
-                    selection.removeAllRanges();
-                } else if (selection.empty) {
-                    selection.empty();
+                    // Highlight sentences
+                    const {predictions} = response.payload;
+                    Object.entries(predictions).forEach(([sentence, [label, props]]) => {
+                        highlightText(sentence, label, props);
+                    });
+
+                    // Hide button and clear selection
+                    analyzeBtn.style.opacity = "0";
+                    if (selection.removeAllRanges) {
+                        selection.removeAllRanges();
+                    } else if (selection.empty) {
+                        selection.empty();
+                    }
                 }
-            }
-        );
+            );
+        });
     });
 }

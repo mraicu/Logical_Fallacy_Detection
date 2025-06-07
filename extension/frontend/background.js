@@ -1,8 +1,8 @@
-const API_URL = "http://localhost:8110";
+const API_URL = "http://localhost:8111";
 
 chrome.storage.local.get("classification", (data) => {
     if (!data || !data.classification) {
-        chrome.storage.local.set({classification: 'binary'});
+        chrome.storage.local.set({classification: 'binary', sentiment: false});
     }
 });
 
@@ -12,6 +12,7 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
             try {
                 POST("/analyze", request.payload)
                     .then((response) => {
+                        console.log('>>>', response);
                         sendResponse({
                             type: "ANALYZE_SELECTION_RESPONSE",
                             payload: response,

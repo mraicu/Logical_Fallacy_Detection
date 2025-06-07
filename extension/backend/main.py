@@ -1,7 +1,10 @@
+from deep_translator import GoogleTranslator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from transformers import BertForSequenceClassification, BertTokenizerFast, pipeline
+
+from utils import get_sentiment, predict_with_sentiment
 
 app = FastAPI()
 
@@ -33,29 +36,85 @@ FALLACY_PROPS = {
 }
 
 
-def classify_text(data, classification_type):
-    if classification_type.lower() == 'binary':
-        model_path = "../../model/outputs/21-02-2025_14-45-55_bert-2-classes-model.pickle"
-    elif classification_type.lower() == '3-classes':
-        model_path = "../../model/outputs/03-03-2025_16-23-08_bert-3-classes-model.pickle"
-    elif classification_type.lower() == '5-classes':
-        model_path = "../../model/outputs/03-03-2025_16-46-39_bert-5-classes-model.pickle"
-    elif classification_type.lower() == '15-classes':
-        model_path = "../../model/outputs/20-02-2025_10-26-38_bert-all-classes-model.pickle"
-    else:
-        model_path = "../../model/outputs/20-02-2025_10-26-38_bert-all-classes-model.pickle"
+def classify_text_with_sentiment(data, model_path, logical_fallacies):
+    base_model_name = "dumitrescustefan/bert-base-romanian-uncased-v1"
 
-    model = BertForSequenceClassification.from_pretrained(model_path)
-    tokenizer = BertTokenizerFast.from_pretrained(model_path)
-    nlp = pipeline("text-classification", model=model, tokenizer=tokenizer)
+    model_name = model_path + "/model.pt"
+    tokenizer_path = model_path + "/tokenizer"
 
-    data = [x for x in data.split(".") if x]
+    translator = GoogleTranslator(source='ro', target='en')
 
+    sentiments = []
+    for sentence in data:
+        translated_sentence = translator.translate(sentence)
+        sentiment = get_sentiment(translated_sentence)
+        sentiments.append(sentiment)
+
+    predictions = predict_with_sentiment(tokenizer_path, model_name, base_model_name, data, sentiments,
+                                         logical_fallacies)
+    return predictions
+
+
+def classify_text(data, classification_type, withSentiment):
     predictions = {}
-    for d in data:
-        label = nlp(d)[0]["label"]
-        props = FALLACY_PROPS.get(label, ["#FFFFFF", ""])
-        predictions[d] = (label, props)
+    data = [x for x in data.split(".") if x]
+    logical_fallacies = []
+    if withSentiment:
+        if classification_type.lower() == 'binary':
+            model_path = "../../model/outputs/experiment-3_4_sent_2_classes/outputs"
+            logical_fallacies = ['fallacy', 'nonfallacy']
+        elif classification_type.lower() == '3-classes':
+            model_path = "../../model/outputs/experiment-3_1_sent_3_classes/outputs"
+            logical_fallacies = ['nonfallacy', 'faulty generalization', 'intentional']
+        elif classification_type.lower() == '5-classes':
+            model_path = "../../model/outputs/experiment-3_2_sent_5_classes/outputs"
+            logical_fallacies = ['nonfallacy', 'faulty generalization', 'intentional', 'ad hominem', 'false causality']
+        elif classification_type.lower() == '15-classes':
+            model_path = "../../model/outputs/experiment-3_3_sent_15_classes/outputs"
+        else:
+            model_path = "../../model/outputs/experiment-3_3_sent_15_classes/outputs"
+            logical_fallacies = ['faulty generalization',
+                                 'false dilemma',
+                                 'appeal to emotion',
+                                 'deductive fallacy',
+                                 'fallacy of extension',
+                                 'false causality',
+                                 'fallacy of relevance',
+                                 'intentional',
+                                 'ad hominem',
+                                 'circular reasoning',
+                                 'fallacy of credibility',
+                                 'ad populum',
+                                 'equivocation',
+                                 'nonfallacy',
+                                 'fallacy of logic']
+        labels = classify_text_with_sentiment(data, model_path, logical_fallacies)
+        for i in range(len(data)):
+            label = labels[i]
+            props = FALLACY_PROPS.get(label, ["#FFFFFF", ""])
+            predictions[data[i]] = (label, props)
+    else:
+        if classification_type.lower() == 'binary':
+            model_path = "../../model/outputs/21-02-2025_14-45-55_bert-2-classes-model.pickle"
+        elif classification_type.lower() == '3-classes':
+            model_path = "../../model/outputs/03-03-2025_16-23-08_bert-3-classes-model.pickle"
+        elif classification_type.lower() == '5-classes':
+            model_path = "../../model/outputs/03-03-2025_16-46-39_bert-5-classes-model.pickle"
+        elif classification_type.lower() == '15-classes':
+            model_path = "../../model/outputs/20-02-2025_10-26-38_bert-all-classes-model.pickle"
+        else:
+            model_path = "../../model/outputs/20-02-2025_10-26-38_bert-all-classes-model.pickle"
+
+        model = BertForSequenceClassification.from_pretrained(model_path)
+        tokenizer = BertTokenizerFast.from_pretrained(model_path)
+        nlp = pipeline("text-classification", model=model, tokenizer=tokenizer)
+
+        for d in data:
+            label = nlp(d)[0]["label"]
+            props = FALLACY_PROPS.get(label, ["#FFFFFF", ""])
+            predictions[d] = (label, props)
+
+    print(predictions)
     return predictions
 
 
@@ -67,9 +126,11 @@ def read_root():
 class TextRequest(BaseModel):
     selectedText: str
     classification: str
+    sentiment: bool
 
 
 @app.post("/analyze")
 def process_text(request: TextRequest):
-    processed_text = classify_text(request.selectedText, request.classification)
+    print(request)
+    processed_text = classify_text(request.selectedText, request.classification, request.sentiment)
     return {"predictions": processed_text}
