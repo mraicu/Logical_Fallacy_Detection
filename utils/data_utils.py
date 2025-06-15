@@ -110,7 +110,6 @@ def plot_training_curve(trainer, file_name="img.png"):
     Args:
         trainer (transformers.Trainer): The Trainer instance after model training.
     """
-    # Ensure the save directory exists (create if it doesn't)
     os.makedirs("images", exist_ok=True)
 
     # Extract metrics from the trainer's log history
