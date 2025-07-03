@@ -1,3 +1,4 @@
+import re
 from deep_translator import GoogleTranslator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,7 +57,7 @@ def classify_text_with_sentiment(data, model_path, logical_fallacies):
 
 def classify_text(data, classification_type, withSentiment):
     predictions = {}
-    data = [x for x in data.split(".") if x]
+    data = [x.strip() for x in re.split(r'(?<!\d)\.(?!\d)', data) if x.strip()]
     logical_fallacies = []
     if withSentiment:
         if classification_type.lower() == 'binary':
