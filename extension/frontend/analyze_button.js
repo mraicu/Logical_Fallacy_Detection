@@ -22,6 +22,7 @@ function createAnalyzeButton() {
     classifierBtn.innerText = "B";
     classifierBtn.classList.add("mr-classifier-btn");
 
+    // expand button
     classifierBtn.addEventListener("mouseenter", () => {
         classifierBtnWrapper.style.width = "182px";
     });

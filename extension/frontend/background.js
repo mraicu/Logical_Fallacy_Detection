@@ -12,7 +12,6 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
             try {
                 POST("/analyze", request.payload)
                     .then((response) => {
-                        console.log('>>>', response);
                         sendResponse({
                             type: "ANALYZE_SELECTION_RESPONSE",
                             payload: response,
@@ -21,19 +20,6 @@ chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
                     .catch((error) => {
                         sendResponse({type: "ANALYZE_SELECTION_ERROR", payload: null});
                     });
-
-                // new Promise((r) => setTimeout(() => r(), 4000)).then(() => {
-                //   const mockResponse = {
-                //     predictions: {
-                //       "Asta nu înseamna": ["fallacy", "#2ecc71"],
-                //     },
-                //   };
-                //
-                //   sendResponse({
-                //     type: "ANALYZE_SELECTION_RESPONSE",
-                //     payload: mockResponse,
-                //   });
-                // });
 
                 return true;
             } catch (error) {

@@ -34,7 +34,6 @@ class BertWithSentiment(nn.Module):
 
 def predict_with_sentiment(tokenizer_path, model_path, model_name, texts, sentiments, logical_fallacies):
     # Load model
-    print('here')
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Get number of labels (you must know your training labels)
@@ -43,15 +42,12 @@ def predict_with_sentiment(tokenizer_path, model_path, model_name, texts, sentim
     id2label = {v: k for k, v in label2id.items()}
     num_labels = len(label2id)
 
-    print('here')
 
     # Recreate model and load weights
     model = BertWithSentiment(model_name=model_name, num_labels=num_labels)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
     model.eval()
-
-    print('here3')
 
     # Load tokenizer
     tokenizer = BertTokenizer.from_pretrained(tokenizer_path)

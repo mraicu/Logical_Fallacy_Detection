@@ -17,7 +17,6 @@ app.add_middleware(
 )
 
 FALLACY_PROPS = {
-    # c0fcee
     'nonfallacy': ["none", "Acesta este un argument valid."],
     'deductive fallacy': ["#fcc0c0", "Structură logică invalidă."],
     'false causality': ["#dffcc0", "Asocierea eronată între cauză și efect."],
@@ -71,6 +70,21 @@ def classify_text(data, classification_type, withSentiment):
             logical_fallacies = ['nonfallacy', 'faulty generalization', 'intentional', 'ad hominem', 'false causality']
         elif classification_type.lower() == '15-classes':
             model_path = "../../model/outputs/experiment-3_3_sent_15_classes/outputs"
+            logical_fallacies = ['faulty generalization',
+                                 'false dilemma',
+                                 'appeal to emotion',
+                                 'deductive fallacy',
+                                 'fallacy of extension',
+                                 'false causality',
+                                 'fallacy of relevance',
+                                 'intentional',
+                                 'ad hominem',
+                                 'circular reasoning',
+                                 'fallacy of credibility',
+                                 'ad populum',
+                                 'equivocation',
+                                 'nonfallacy',
+                                 'fallacy of logic']
         else:
             model_path = "../../model/outputs/experiment-3_3_sent_15_classes/outputs"
             logical_fallacies = ['faulty generalization',
